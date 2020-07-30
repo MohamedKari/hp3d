@@ -1,0 +1,14 @@
+version: "2.4"
+
+services:
+  hp3d:
+    # build time
+    image: hp3d
+    build:
+     context: .
+    # run time
+    runtime: nvidia
+    container_name: hp3d
+    shm_size: 2gb
+    volumes:
+      - /home/ubuntu/share/hp3d:/app/share
