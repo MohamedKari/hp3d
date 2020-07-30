@@ -9,7 +9,6 @@ from modules.input_reader import VideoReader, ImageReader
 from modules.draw import Plotter3d, draw_poses
 from modules.parse_poses import parse_poses
 
-
 def rotate_poses(poses_3d, R, t):
     R_inv = np.linalg.inv(R)
     for pose_id in range(len(poses_3d)):
@@ -19,6 +18,62 @@ def rotate_poses(poses_3d, R, t):
 
     return poses_3d
 
+def get_poses_struct(poses_2d, poses_3d, tracking_ids):
+    num_poses = poses_2d.shape[0]
+    num_keypoints = 18
+    num_unused_keypoints = 1
+
+    keypoint_names_by_id = {
+        1: "neck",
+        2: "torso",
+        3: "nose",
+        4: "l_sho",
+        5: "l_elb",
+        6: "l_wri",
+        7: "l_hip",
+        8: "l_knee",
+        9: "l_ank",
+        10: "r_sho",
+        11: "r_elb",
+        12: "r_wri",
+        13: "r_hip",
+        14: "r_knee",
+        15: "r_ank",
+        16: "r_eye",
+        17: "l_eye",
+        18: "r_ear",
+        19: "l_ear"
+    }
+
+    poses_list = list()
+    
+    for pose_2d, pose_3d, tracking_id in zip(poses_2d, poses_3d, tracking_ids):
+        current_pose = dict()
+        current_pose["tracking_id"] = tracking_id
+        keypoints_2d = pose_2d[:-1].reshape((-1, 3))
+        keypoints_3d = pose_3d.reshape((-1, 4))
+        
+        for keypoint_id, (keypoint_2d, keypoint_3d) in enumerate(zip(keypoints_2d, keypoints_3d)):
+            p_x, p_y, p_score = score_2d = keypoint_2d # p = pixel space
+            c_x, c_y, c_z, c_score = keypoint_3d # c = camera space
+
+            if keypoint_id == 2:
+                continue
+            
+            current_pose[keypoint_names_by_id.get(keypoint_id)] = {
+                "visible": bool(p_score != -1),
+                "p_x": float(p_x),
+                "p_y": float(p_y),
+                "p_score": float(p_score),
+                "c_x": float(c_x),
+                "c_y": float(c_y),
+                "c_z": float(c_z),
+                "c_score": float(c_score)
+            }
+
+        poses_list.append(current_pose)
+    
+    return poses_list
 
 if __name__ == '__main__':
     parser = ArgumentParser(description='Lightweight 3D human pose estimation demo. '
@@ -81,6 +136,7 @@ if __name__ == '__main__':
     space_code = 32
     mean_time = 0
     for i, frame in enumerate(frame_provider):
+        
         current_time = cv2.getTickCount()
         if frame is None:
             break
@@ -90,8 +146,16 @@ if __name__ == '__main__':
         if fx < 0:  # Focal length is unknown
             fx = np.float32(0.8 * frame.shape[1])
 
+        cv2.imwrite(f"input_{i:04}.jpg", scaled_img)
+
         inference_result = net.infer(scaled_img)
-        poses_3d, poses_2d = parse_poses(inference_result, input_scale, stride, fx, is_video)
+        poses_3d, poses_2d, tracking_ids = parse_poses(inference_result, input_scale, stride, fx, is_video)
+        
+        poses_struct = get_poses_struct(poses_2d, poses_3d, tracking_ids)
+        
+        with open(f"poses_{i:04}.json", "wt") as json_file:
+            json.dump(poses_struct, json_file, indent=4)
+        
         edges = []
         if len(poses_3d):
             poses_3d = rotate_poses(poses_3d, R, t)
@@ -104,7 +168,7 @@ if __name__ == '__main__':
             poses_3d = poses_3d.reshape(poses_3d.shape[0], 19, -1)[:, :, 0:3]
             edges = (Plotter3d.SKELETON_EDGES + 19 * np.arange(poses_3d.shape[0]).reshape((-1, 1, 1))).reshape((-1, 2))
         plotter.plot(canvas_3d, poses_3d, edges)
-        cv2.imwrite(f"canvas_3d_{i:04}.jpg", canvas_3d)
+        cv2.imwrite(f"camera_space_{i:04}.jpg", canvas_3d)
 
         draw_poses(frame, poses_2d)
         current_time = (cv2.getTickCount() - current_time) / cv2.getTickFrequency()
@@ -114,7 +178,7 @@ if __name__ == '__main__':
             mean_time = mean_time * 0.95 + current_time * 0.05
         cv2.putText(frame, 'FPS: {}'.format(int(1 / mean_time * 10) / 10),
                     (40, 80), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 0, 255))
-        cv2.imwrite(f"icd_3d_pose_{i:04}.jpg", frame)
+        cv2.imwrite(f"pixel_space_{i:04}.jpg", frame)
 
         key = cv2.waitKey(delay)
         if key == esc_code:

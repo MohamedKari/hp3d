@@ -105,6 +105,7 @@ def parse_poses(inference_results, input_scale, stride, fx, is_video=False):
         propagate_ids(previous_poses_2d, current_poses_2d)
         previous_poses_2d = current_poses_2d
 
+    tracking_ids = []
     translated_poses_3d = []
     # translate poses
     for pose_id in range(len(poses_3d)):
@@ -140,6 +141,8 @@ def parse_poses(inference_results, input_scale, stride, fx, is_video=False):
             pose_3d[0, kpt_id] = pose_3d[0, kpt_id] + translation[0]
             pose_3d[1, kpt_id] = pose_3d[1, kpt_id] + translation[1]
             pose_3d[2, kpt_id] = pose_3d[2, kpt_id] + translation[2]
-        translated_poses_3d.append(pose_3d.transpose().reshape(-1))
 
-    return np.array(translated_poses_3d), np.array(poses_2d_scaled)
+        translated_poses_3d.append(pose_3d.transpose().reshape(-1))
+        tracking_ids.append(current_poses_2d[pose_id].id)
+
+    return np.array(translated_poses_3d), np.array(poses_2d_scaled), tracking_ids
