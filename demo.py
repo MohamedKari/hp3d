@@ -58,9 +58,6 @@ if __name__ == '__main__':
 
     canvas_3d = np.zeros((720, 1280, 3), dtype=np.uint8)
     plotter = Plotter3d(canvas_3d.shape[:2])
-    canvas_3d_window_name = 'Canvas 3D'
-    cv2.namedWindow(canvas_3d_window_name)
-    cv2.setMouseCallback(canvas_3d_window_name, Plotter3d.mouse_callback)
 
     file_path = args.extrinsics_path
     if file_path is None:
@@ -83,7 +80,7 @@ if __name__ == '__main__':
     p_code = 112
     space_code = 32
     mean_time = 0
-    for frame in frame_provider:
+    for i, frame in enumerate(frame_provider):
         current_time = cv2.getTickCount()
         if frame is None:
             break
@@ -107,7 +104,7 @@ if __name__ == '__main__':
             poses_3d = poses_3d.reshape(poses_3d.shape[0], 19, -1)[:, :, 0:3]
             edges = (Plotter3d.SKELETON_EDGES + 19 * np.arange(poses_3d.shape[0]).reshape((-1, 1, 1))).reshape((-1, 2))
         plotter.plot(canvas_3d, poses_3d, edges)
-        cv2.imshow(canvas_3d_window_name, canvas_3d)
+        cv2.imwrite(f"canvas_3d_{i:04}.jpg", canvas_3d)
 
         draw_poses(frame, poses_2d)
         current_time = (cv2.getTickCount() - current_time) / cv2.getTickFrequency()
@@ -117,7 +114,7 @@ if __name__ == '__main__':
             mean_time = mean_time * 0.95 + current_time * 0.05
         cv2.putText(frame, 'FPS: {}'.format(int(1 / mean_time * 10) / 10),
                     (40, 80), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 0, 255))
-        cv2.imshow('ICV 3D Human Pose Estimation', frame)
+        cv2.imwrite(f"icd_3d_pose_{i:04}.jpg", frame)
 
         key = cv2.waitKey(delay)
         if key == esc_code:
@@ -133,7 +130,7 @@ if __name__ == '__main__':
                    and key != esc_code
                    and key != space_code):
                 plotter.plot(canvas_3d, poses_3d, edges)
-                cv2.imshow(canvas_3d_window_name, canvas_3d)
+                cv2.imwrite(f"canvas_3d_2_{i:04}.jpg", canvas_3d)
                 key = cv2.waitKey(33)
             if key == esc_code:
                 break
