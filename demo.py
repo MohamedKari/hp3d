@@ -1,6 +1,10 @@
 from argparse import ArgumentParser
 import json
 import os
+import time
+import datetime
+from pathlib import Path
+from time import timezone
 
 import cv2
 import numpy as np
@@ -8,6 +12,9 @@ import numpy as np
 from modules.input_reader import VideoReader, ImageReader
 from modules.draw import Plotter3d, draw_poses
 from modules.parse_poses import parse_poses
+
+def get_path_compatible_date_string():
+    return str(datetime.datetime.fromtimestamp(time.time())).replace(":", "_").replace(" ", "_").replace(".", "_")
 
 def rotate_poses(poses_3d, R, t):
     R_inv = np.linalg.inv(R)
@@ -24,25 +31,25 @@ def get_poses_struct(poses_2d, poses_3d, tracking_ids):
     num_unused_keypoints = 1
 
     keypoint_names_by_id = {
-        1: "neck",
+        0: "neck",
+        1: "nose",
         2: "torso",
-        3: "nose",
-        4: "l_sho",
-        5: "l_elb",
-        6: "l_wri",
-        7: "l_hip",
-        8: "l_knee",
-        9: "l_ank",
-        10: "r_sho",
-        11: "r_elb",
-        12: "r_wri",
-        13: "r_hip",
-        14: "r_knee",
-        15: "r_ank",
-        16: "r_eye",
-        17: "l_eye",
-        18: "r_ear",
-        19: "l_ear"
+        3: "l_sho",
+        4: "l_elb",
+        5: "l_wri",
+        6: "l_hip",
+        7: "l_knee",
+        8: "l_ank",
+        9: "r_sho",
+        10: "r_elb",
+        11: "r_wri",
+        12: "r_hip",
+        13: "r_knee",
+        14: "r_ank",
+        15: "r_eye",
+        16: "l_eye",
+        17: "r_ear",
+        18: "l_ear"
     }
 
     poses_list = list()
@@ -56,11 +63,8 @@ def get_poses_struct(poses_2d, poses_3d, tracking_ids):
         for keypoint_id, (keypoint_2d, keypoint_3d) in enumerate(zip(keypoints_2d, keypoints_3d)):
             p_x, p_y, p_score = score_2d = keypoint_2d # p = pixel space
             c_x, c_y, c_z, c_score = keypoint_3d # c = camera space
-
-            if keypoint_id == 2:
-                continue
             
-            current_pose[keypoint_names_by_id.get(keypoint_id)] = {
+            current_pose[keypoint_names_by_id[keypoint_id]] = {
                 "visible": bool(p_score != -1),
                 "p_x": float(p_x),
                 "p_y": float(p_y),
@@ -94,6 +98,7 @@ if __name__ == '__main__':
                         action='store_true')
     parser.add_argument('--images', help='Optional. Path to input image(s).', nargs='+', default='')
     parser.add_argument('--height-size', help='Optional. Network input layer height size.', type=int, default=256)
+    parser.add_argument('-o', '--output-path', help="Optional. Path to output image(s)", default=".")
     parser.add_argument('--extrinsics-path',
                         help='Optional. Path to file with camera extrinsics.',
                         type=str, default=None)
@@ -130,6 +135,8 @@ if __name__ == '__main__':
     base_height = args.height_size
     fx = args.fx
 
+    output_dir = Path(args.output_path, get_path_compatible_date_string())
+    output_dir.mkdir(exist_ok=False, parents=False)
     delay = 1
     esc_code = 27
     p_code = 112
@@ -146,7 +153,8 @@ if __name__ == '__main__':
         if fx < 0:  # Focal length is unknown
             fx = np.float32(0.8 * frame.shape[1])
 
-        cv2.imwrite(f"input_{i:04}.jpg", scaled_img)
+        scaled_img_path = os.path.join(output_dir, f"input_{i:04}.jpg")
+        cv2.imwrite(scaled_img_path, scaled_img)
 
         inference_result = net.infer(scaled_img)
         poses_3d, poses_2d, tracking_ids = parse_poses(inference_result, input_scale, stride, fx, is_video)
@@ -168,7 +176,7 @@ if __name__ == '__main__':
             poses_3d = poses_3d.reshape(poses_3d.shape[0], 19, -1)[:, :, 0:3]
             edges = (Plotter3d.SKELETON_EDGES + 19 * np.arange(poses_3d.shape[0]).reshape((-1, 1, 1))).reshape((-1, 2))
         plotter.plot(canvas_3d, poses_3d, edges)
-        cv2.imwrite(f"camera_space_{i:04}.jpg", canvas_3d)
+        cv2.imwrite(os.path.join(output_dir, f"camera_space_{i:04}.jpg"), canvas_3d)
 
         draw_poses(frame, poses_2d)
         current_time = (cv2.getTickCount() - current_time) / cv2.getTickFrequency()
@@ -178,7 +186,7 @@ if __name__ == '__main__':
             mean_time = mean_time * 0.95 + current_time * 0.05
         cv2.putText(frame, 'FPS: {}'.format(int(1 / mean_time * 10) / 10),
                     (40, 80), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 0, 255))
-        cv2.imwrite(f"pixel_space_{i:04}.jpg", frame)
+        cv2.imwrite(os.path.join(output_dir, f"pixel_space_{i:04}.jpg"), frame)
 
         key = cv2.waitKey(delay)
         if key == esc_code:
@@ -194,7 +202,7 @@ if __name__ == '__main__':
                    and key != esc_code
                    and key != space_code):
                 plotter.plot(canvas_3d, poses_3d, edges)
-                cv2.imwrite(f"canvas_3d_2_{i:04}.jpg", canvas_3d)
+                cv2.imwrite(os.path.join(output_dir, f"canvas_3d_2_{i:04}.jpg"), canvas_3d)
                 key = cv2.waitKey(33)
             if key == esc_code:
                 break

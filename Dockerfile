@@ -79,16 +79,18 @@ RUN pip install -r requirements.txt
 ##### APPLICATION #####
 COPY . .
 
-ENTRYPOINT [ "bash", "-c", "bash" ]
+ENV PYTHONPATH=pose_extractor/build/:$PYTHONPATH
+ENTRYPOINT python setup.py build_ext && python demo.py --model human-pose-estimation-3d.pth --video raw.mp4 --output-path share
 # ENTRYPOINT [ "bash", "-c", "python setup.py build_ext && bash" ]
 
 # make docker-ssh
 # python setup.py build_ext
-# export PYTHONPATH=pose_extractor/build/:$PYTHONPATH
+# export 
 # python
 # from pose_extractor import extract_poses
 # python demo.py --model human-pose-estimation-3d.pth --video 0
 # python demo.py --model human-pose-estimation-3d.pth --video waymo.mp4
+# python demo.py --model human-pose-estimation-3d.pth --video raw.mp4
 
 
 # sudo /.pyenv/shims/python demo.py --model human-pose-estimation-3d.pth --video 0
