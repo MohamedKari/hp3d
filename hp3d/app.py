@@ -186,13 +186,21 @@ class Hp3dSession():
         return Hp3dDetection(scaled_img, frame_np, self.canvas_3d, poses_struct)
 
 
-def run():
-    hp3d_session = Hp3dSession("cuda:0", "human-pose-estimation-3d.pth")
-    Path("share", hp3d_session.timestamp).mkdir(exist_ok=False, parents=False)
-    frame_provider = VideoReader("raw.mp4")
+def run(path_to_video, path_to_output_dir, device):
+    hp3d_session = Hp3dSession(device, "human-pose-estimation-3d.pth")
+    output_dir = Path(path_to_output_dir, hp3d_session.timestamp)
+    output_dir.mkdir(exist_ok=False, parents=False)
+
+    frame_provider = VideoReader(path_to_video)
     for i, frame in enumerate(frame_provider):
         hp3d_detection = hp3d_session.detect(i, frame)
-        hp3d_detection.save(os.path.join("share", hp3d_session.timestamp), i)
+        hp3d_detection.save(output_dir, i)
 
 if __name__ == "__main__":
-    run()
+    parser = ArgumentParser()
+    parser.add_argument("path_to_video")
+    parser.add_argument("path_to_output_dir")
+    parser.add_argument("--device", default="cuda:0", choices=[f"cuda:{i}" for i in range(0, 8)])
+    
+    args = parser.parse_args()
+    run(args.path_to_video, args.path_to_output_dir, args.device)

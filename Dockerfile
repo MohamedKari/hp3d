@@ -80,8 +80,8 @@ RUN pip install -r requirements.txt
 COPY . .
 
 ENV PYTHONPATH=hp3d/pose_extractor/build/:$PYTHONPATH
-ENTRYPOINT python setup.py build_ext && python -m hp3d --model human-pose-estimation-3d.pth --video raw.mp4 --output-path share
-# ENTRYPOINT [ "bash", "-c", "python setup.py build_ext && bash" ]
+ENTRYPOINT python setup.py build_ext && python -m hp3d.app raw.mp4 share
+# ENTRYPOINT python setup.py build_ext && python -m hp3d.rpc.server
 
 # make docker-ssh
 # python setup.py build_ext
