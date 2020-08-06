@@ -80,17 +80,5 @@ RUN pip install -r requirements.txt
 COPY . .
 
 ENV PYTHONPATH=hp3d/pose_extractor/build/:$PYTHONPATH
-ENTRYPOINT python setup.py build_ext && python -m hp3d.app raw.mp4 share
-# ENTRYPOINT python setup.py build_ext && python -m hp3d.rpc.server
-
-# make docker-ssh
-# python setup.py build_ext
-# export 
-# python
-# from pose_extractor import extract_poses
-# python demo.py --model human-pose-estimation-3d.pth --video 0
-# python demo.py --model human-pose-estimation-3d.pth --video waymo.mp4
-# python demo.py --model human-pose-estimation-3d.pth --video raw.mp4
-
-
-# sudo /.pyenv/shims/python demo.py --model human-pose-estimation-3d.pth --video 0
+# ENTRYPOINT python setup.py build_ext && python -m hp3d.app raw.mp4 share
+ENTRYPOINT python setup.py build_ext && python -m hp3d.rpc.server
