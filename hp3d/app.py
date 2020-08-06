@@ -13,6 +13,7 @@ import numpy as np
 from .modules.input_reader import VideoReader, ImageReader
 from .modules.draw import Plotter3d, draw_poses
 from .modules.parse_poses import parse_poses
+from .modules.inference_engine_pytorch import InferenceEnginePyTorch
 
 def get_path_compatible_date_string():
     return str(datetime.datetime.fromtimestamp(time.time())).replace(":", "_").replace(" ", "_").replace(".", "_")
@@ -80,108 +81,87 @@ def get_poses_struct(poses_2d, poses_3d, tracking_ids):
     
     return poses_list
 
-class ProgrammaticArgs():
-    model = "human-pose-estimation-3d.pth"
-    device = "cuda:0"
-    output_path = "/share"
+
+class Hp3dDetection():
+
+    def __init__(self, 
+            scaled_input_image: np.ndarray, 
+            pixel_space_image: np.ndarray,
+            camera_space_image: np.ndarray,
+            poses_struct: str):
+        
+        self.scaled_input_image = scaled_input_image
+        self.pixel_space_image = pixel_space_image
+        self.camera_space_image = camera_space_image
+        self.poses_struct = poses_struct 
+
+    def save(self, output_dir: Path, frame_id: int):
+        cv2.imwrite(
+            os.path.join(output_dir, f"input_{frame_id:04}.jpg"), 
+            self.scaled_input_image)
+
+        cv2.imwrite(
+            os.path.join(output_dir, f"pixel_space_{frame_id:04}.jpg"),
+            self.pixel_space_image)
+
+        cv2.imwrite(
+            os.path.join(output_dir, f"camera_space_{frame_id:04}.jpg"),
+            self.camera_space_image)
+
+        Path(output_dir, f"poses_{frame_id:04}.json").write_text(
+             json.dumps(self.poses_struct, indent=4))            
+
 
 class Hp3dSession():
 
-    def __init__(self, path_to_model: str, device: str, output_path: str):
-        pass
 
-    def detect(self, frame_id: int, frame_image: Image.Image):
-        pass
+    def __init__(
+            self, 
+            device: str, 
+            path_to_model: str, 
+            base_height: int = 256, 
+            path_to_extrinsics = 'hp3d/data/extrinsics.json',
+            fx: np.float32 = -1): 
+        """
+        device: str. E. g. cpu, cuda:0, cuda:1, ...
+        path_to_model: Path to PyTorch pth file
+        fx: Camera focal length.
+        """
+        self.stride = 8
+        self.base_height = base_height
+        self.fx = fx
 
-
-def run():
-    parser = ArgumentParser(description='Lightweight 3D human pose estimation demo. '
-                                        'Press esc to exit, "p" to (un)pause video or process next image.')
-    parser.add_argument('-m', '--model',
-                        help='Required. Path to checkpoint with a trained model '
-                             '(or an .xml file in case of OpenVINO inference).',
-                        type=str, required=True)
-    parser.add_argument('--video', help='Optional. Path to video file or camera id.', type=str, default='')
-    parser.add_argument('-d', '--device',
-                        help='Optional. Specify the target device to infer on: CPU or GPU. '
-                             'The demo will look for a suitable plugin for device specified '
-                             '(by default, it is GPU).',
-                        type=str, default='GPU')
-    parser.add_argument('--use-openvino',
-                        help='Optional. Run network with OpenVINO as inference engine. '
-                             'CPU, GPU, FPGA, HDDL or MYRIAD devices are supported.',
-                        action='store_true')
-    parser.add_argument('--images', help='Optional. Path to input image(s).', nargs='+', default='')
-    parser.add_argument('--height-size', help='Optional. Network input layer height size.', type=int, default=256)
-    parser.add_argument('-o', '--output-path', help="Optional. Path to output image(s)", default=".")
-    parser.add_argument('--extrinsics-path',
-                        help='Optional. Path to file with camera extrinsics.',
-                        type=str, default=None)
-    parser.add_argument('--fx', type=np.float32, default=-1, help='Optional. Camera focal length.')
-    args = parser.parse_args()
-
-    if args.video == '' and args.images == '':
-        raise ValueError('Either --video or --image has to be provided')
-
-    stride = 8
-    if args.use_openvino:
-        from modules.inference_engine_openvino import InferenceEngineOpenVINO
-        net = InferenceEngineOpenVINO(args.model, args.device)
-    else:
-        from .modules.inference_engine_pytorch import InferenceEnginePyTorch
-        net = InferenceEnginePyTorch(args.model, args.device)
-
-    canvas_3d = np.zeros((720, 1280, 3), dtype=np.uint8)
-    plotter = Plotter3d(canvas_3d.shape[:2])
-
-    file_path = args.extrinsics_path
-    if file_path is None:
-        file_path = os.path.join('hp3d', 'data', 'extrinsics.json')
-    with open(file_path, 'r') as f:
-        extrinsics = json.load(f)
-    R = np.array(extrinsics['R'], dtype=np.float32)
-    t = np.array(extrinsics['t'], dtype=np.float32)
-
-    frame_provider = ImageReader(args.images)
-    is_video = False
-    if args.video != '':
-        frame_provider = VideoReader(args.video)
-        is_video = True
-    base_height = args.height_size
-    fx = args.fx
-
-    output_dir = Path(args.output_path, get_path_compatible_date_string())
-    output_dir.mkdir(exist_ok=False, parents=False)
-    delay = 1
-    esc_code = 27
-    p_code = 112
-    space_code = 32
-    mean_time = 0
-    for i, frame in enumerate(frame_provider):
+        self.net = InferenceEnginePyTorch(path_to_model, device)
         
+        self.canvas_3d = np.zeros((720, 1280, 3), dtype=np.uint8)
+        self.plotter = Plotter3d(self.canvas_3d.shape[:2])
+        
+        extrinsics = json.loads(Path(path_to_extrinsics).read_text())
+        self.R = np.array(extrinsics['R'], dtype=np.float32)
+        self.t = np.array(extrinsics['t'], dtype=np.float32)
+        
+        self.timestamp = get_path_compatible_date_string()
+        self.mean_time = 0
+    
+    def detect(self, frame_id: int, frame_np: np.array) -> Hp3dDetection:
         current_time = cv2.getTickCount()
-        if frame is None:
-            break
-        input_scale = base_height / frame.shape[0]
-        scaled_img = cv2.resize(frame, dsize=None, fx=input_scale, fy=input_scale)
-        scaled_img = scaled_img[:, 0:scaled_img.shape[1] - (scaled_img.shape[1] % stride)]  # better to pad, but cut out for demo
-        if fx < 0:  # Focal length is unknown
-            fx = np.float32(0.8 * frame.shape[1])
 
-        scaled_img_path = os.path.join(output_dir, f"input_{i:04}.jpg")
-        cv2.imwrite(scaled_img_path, scaled_img)
+        self.canvas_3d = np.zeros((720, 1280, 3), dtype=np.uint8)
 
-        inference_result = net.infer(scaled_img)
-        poses_3d, poses_2d, tracking_ids = parse_poses(inference_result, input_scale, stride, fx, is_video)
+        input_scale = self.base_height / frame_np.shape[0]
+        scaled_img = cv2.resize(frame_np, dsize=None, fx=input_scale, fy=input_scale)
+        scaled_img = scaled_img[:, 0:scaled_img.shape[1] - (scaled_img.shape[1] % self.stride)]  # better to pad, but cut out for demo
+
+        if self.fx < 0:  # Focal length is unknown
+            fx = np.float32(0.8 * frame_np.shape[1])
+
+        inference_result = self.net.infer(scaled_img)
+        poses_3d, poses_2d, tracking_ids = parse_poses(inference_result, input_scale, self.stride, fx, is_video=True)
         
         poses_struct = get_poses_struct(poses_2d, poses_3d, tracking_ids)
-        
-        with open(f"poses_{i:04}.json", "wt") as json_file:
-            json.dump(poses_struct, json_file, indent=4)
-        
         edges = []
         if len(poses_3d):
-            poses_3d = rotate_poses(poses_3d, R, t)
+            poses_3d = rotate_poses(poses_3d, self.R, self.t)
             poses_3d_copy = poses_3d.copy()
             x = poses_3d_copy[:, 0::4]
             y = poses_3d_copy[:, 1::4]
@@ -190,45 +170,29 @@ def run():
 
             poses_3d = poses_3d.reshape(poses_3d.shape[0], 19, -1)[:, :, 0:3]
             edges = (Plotter3d.SKELETON_EDGES + 19 * np.arange(poses_3d.shape[0]).reshape((-1, 1, 1))).reshape((-1, 2))
-        plotter.plot(canvas_3d, poses_3d, edges)
-        cv2.imwrite(os.path.join(output_dir, f"camera_space_{i:04}.jpg"), canvas_3d)
+        self.plotter.plot(self.canvas_3d, poses_3d, edges)
 
-        draw_poses(frame, poses_2d)
+        draw_poses(frame_np, poses_2d)
+
+        # Write FPS to image
         current_time = (cv2.getTickCount() - current_time) / cv2.getTickFrequency()
-        if mean_time == 0:
-            mean_time = current_time
+        if self.mean_time == 0:
+            self.mean_time = current_time
         else:
-            mean_time = mean_time * 0.95 + current_time * 0.05
-        cv2.putText(frame, 'FPS: {}'.format(int(1 / mean_time * 10) / 10),
+            self.mean_time = self.mean_time * 0.95 + current_time * 0.05
+        cv2.putText(frame_np, 'FPS: {}'.format(int(1 / self.mean_time * 10) / 10),
                     (40, 80), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 0, 255))
-        cv2.imwrite(os.path.join(output_dir, f"pixel_space_{i:04}.jpg"), frame)
 
-        key = cv2.waitKey(delay)
-        print("key", key)
-        if key == esc_code:
-            print("key == esc_code", key == esc_code)
-            break
-        if key == p_code:
-            print("key == p_code", key == p_code)
-            if delay == 1:
-                print("delay == 1", delay == 1)
-                delay = 0
-            else:
-                print("delay == 1", delay == 1)
-                delay = 1
-        if delay == 0 or not is_video:  # allow to rotate 3D canvas while on pause
-            print("delay == 0 or not is_video", delay == 0 or not is_video)
-            key = 0
-            while (key != p_code
-                   and key != esc_code
-                   and key != space_code):
-                plotter.plot(canvas_3d, poses_3d, edges)
-                cv2.imwrite(os.path.join(output_dir, f"canvas_3d_2_{i:04}.jpg"), canvas_3d)
-                key = cv2.waitKey(33)
-            if key == esc_code:
-                break
-            else:
-                delay = 1
+        return Hp3dDetection(scaled_img, frame_np, self.canvas_3d, poses_struct)
+
+
+def run():
+    hp3d_session = Hp3dSession("cuda:0", "human-pose-estimation-3d.pth")
+    Path("share", hp3d_session.timestamp).mkdir(exist_ok=False, parents=False)
+    frame_provider = VideoReader("raw.mp4")
+    for i, frame in enumerate(frame_provider):
+        hp3d_detection = hp3d_session.detect(i, frame)
+        hp3d_detection.save(os.path.join("share", hp3d_session.timestamp), i)
 
 if __name__ == "__main__":
     run()
