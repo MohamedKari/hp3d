@@ -1,6 +1,6 @@
 import numpy as np
 
-from modules.pose import Pose, propagate_ids
+from .pose import Pose, propagate_ids
 try:
     from pose_extractor import extract_poses
 except:

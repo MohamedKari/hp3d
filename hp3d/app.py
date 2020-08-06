@@ -10,9 +10,9 @@ from PIL import Image
 import cv2
 import numpy as np
 
-from modules.input_reader import VideoReader, ImageReader
-from modules.draw import Plotter3d, draw_poses
-from modules.parse_poses import parse_poses
+from .modules.input_reader import VideoReader, ImageReader
+from .modules.draw import Plotter3d, draw_poses
+from .modules.parse_poses import parse_poses
 
 def get_path_compatible_date_string():
     return str(datetime.datetime.fromtimestamp(time.time())).replace(":", "_").replace(" ", "_").replace(".", "_")
@@ -94,7 +94,7 @@ class Hp3dSession():
         pass
 
 
-if __name__ == '__main__':
+def run():
     parser = ArgumentParser(description='Lightweight 3D human pose estimation demo. '
                                         'Press esc to exit, "p" to (un)pause video or process next image.')
     parser.add_argument('-m', '--model',
@@ -128,7 +128,7 @@ if __name__ == '__main__':
         from modules.inference_engine_openvino import InferenceEngineOpenVINO
         net = InferenceEngineOpenVINO(args.model, args.device)
     else:
-        from modules.inference_engine_pytorch import InferenceEnginePyTorch
+        from .modules.inference_engine_pytorch import InferenceEnginePyTorch
         net = InferenceEnginePyTorch(args.model, args.device)
 
     canvas_3d = np.zeros((720, 1280, 3), dtype=np.uint8)
@@ -136,7 +136,7 @@ if __name__ == '__main__':
 
     file_path = args.extrinsics_path
     if file_path is None:
-        file_path = os.path.join('data', 'extrinsics.json')
+        file_path = os.path.join('hp3d', 'data', 'extrinsics.json')
     with open(file_path, 'r') as f:
         extrinsics = json.load(f)
     R = np.array(extrinsics['R'], dtype=np.float32)
@@ -229,3 +229,6 @@ if __name__ == '__main__':
                 break
             else:
                 delay = 1
+
+if __name__ == "__main__":
+    run()

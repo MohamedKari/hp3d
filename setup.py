@@ -5,7 +5,7 @@ from setuptools.command.build_ext import build_ext
 import subprocess
 import sys
 
-
+PYTHON_PACKAGE_NAME = 'hp3d'
 PACKAGE_NAME = 'pose_extractor'
 
 
@@ -15,7 +15,7 @@ if '--debug' in sys.argv:
 
 
 class CMakeExtension(Extension):
-    def __init__(self, name, cmake_lists_dir=PACKAGE_NAME, **kwargs):
+    def __init__(self, name, cmake_lists_dir, **kwargs):
         Extension.__init__(self, name, sources=[], **kwargs)
         self.cmake_lists_dir = os.path.abspath(cmake_lists_dir)
 
@@ -28,10 +28,10 @@ class CMakeBuild(build_ext):
             raise RuntimeError('Cannot find CMake executable')
 
         ext = self.extensions[0]
-        build_dir = os.path.abspath(os.path.join(PACKAGE_NAME, 'build'))
+        build_dir = os.path.abspath(os.path.join(PYTHON_PACKAGE_NAME, PACKAGE_NAME, 'build'))
+        tmp_dir = os.path.join(build_dir, 'tmp')
         if not os.path.exists(build_dir):
             os.mkdir(build_dir)
-        tmp_dir = os.path.join(build_dir, 'tmp')
         if not os.path.exists(tmp_dir):
             os.mkdir(tmp_dir)
 
@@ -68,5 +68,5 @@ setup(name=PACKAGE_NAME,
       packages=[PACKAGE_NAME],
       version='1.0',
       description='Auxiliary C++ module for fast 2d pose extraction from network output',
-      ext_modules=[CMakeExtension(PACKAGE_NAME)],
+      ext_modules=[CMakeExtension(PACKAGE_NAME, cmake_lists_dir=os.path.join(PYTHON_PACKAGE_NAME, PACKAGE_NAME))],
       cmdclass={'build_ext': CMakeBuild})
