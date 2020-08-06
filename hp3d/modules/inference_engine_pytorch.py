@@ -11,12 +11,8 @@ class InferenceEnginePyTorch:
 
         self.img_mean = img_mean
         self.img_scale = img_scale
-        self.device = 'cpu'
-        if device != 'CPU':
-            if torch.cuda.is_available():
-                self.device = torch.device('cuda:0')
-            else:
-                print('No CUDA device found, inferring on CPU')
+        self.device = torch.device(device)
+           
 
         net = PoseEstimationWithMobileNet()
         checkpoint = torch.load(checkpoint_path, map_location='cpu')
