@@ -5,6 +5,7 @@ import time
 import datetime
 from pathlib import Path
 from time import timezone
+from PIL import Image
 
 import cv2
 import numpy as np
@@ -78,6 +79,20 @@ def get_poses_struct(poses_2d, poses_3d, tracking_ids):
         poses_list.append(current_pose)
     
     return poses_list
+
+class ProgrammaticArgs():
+    model = "human-pose-estimation-3d.pth"
+    device = "cuda:0"
+    output_path = "/share"
+
+class Hp3dSession():
+
+    def __init__(self, path_to_model: str, device: str, output_path: str):
+        pass
+
+    def detect(self, frame_id: int, frame_image: Image.Image):
+        pass
+
 
 if __name__ == '__main__':
     parser = ArgumentParser(description='Lightweight 3D human pose estimation demo. '
@@ -189,14 +204,20 @@ if __name__ == '__main__':
         cv2.imwrite(os.path.join(output_dir, f"pixel_space_{i:04}.jpg"), frame)
 
         key = cv2.waitKey(delay)
+        print("key", key)
         if key == esc_code:
+            print("key == esc_code", key == esc_code)
             break
         if key == p_code:
+            print("key == p_code", key == p_code)
             if delay == 1:
+                print("delay == 1", delay == 1)
                 delay = 0
             else:
+                print("delay == 1", delay == 1)
                 delay = 1
         if delay == 0 or not is_video:  # allow to rotate 3D canvas while on pause
+            print("delay == 0 or not is_video", delay == 0 or not is_video)
             key = 0
             while (key != p_code
                    and key != esc_code
