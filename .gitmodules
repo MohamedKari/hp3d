@@ -1,0 +1,3 @@
+[submodule "realtery-protos"]
+	path = realtery-protos
+	url = https://github.com/MohamedKari/realtery-protos
