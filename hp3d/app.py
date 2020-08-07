@@ -197,6 +197,8 @@ class Hp3dSession():
 
         return Hp3dDetection(scaled_img, poses_struct, viz_2d, canvas_3d)
 
+    def stop_session(self):
+        del self.net
 
 def run(path_to_video, path_to_output_dir, device):
     hp3d_session = Hp3dSession(device, "human-pose-estimation-3d.pth")
