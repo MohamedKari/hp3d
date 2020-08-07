@@ -2,6 +2,8 @@ import logging
 from io import BytesIO
 from pathlib import Path
 from argparse import ArgumentParser
+import datetime
+import time
 
 import grpc
 from PIL import Image
@@ -101,11 +103,12 @@ if __name__ == "__main__":
     human_pose_detection_client = HumanPoseDetectionClient(
         args.remote_ip,
         args.remote_port,
-        60
-    )
+        60)
 
     _session_id = human_pose_detection_client.StartSession()
     _timestamp = str(datetime.datetime.fromtimestamp(time.time())).replace(":", "_").replace(" ", "_").replace(".", "_")
+    _output_dir = Path("output", _timestamp)
+    _output_dir.mkdir(exist_ok=False, parents=True)
 
     frame_provider = VideoReader(args.path_to_video)
     for _i, _frame_np in enumerate(frame_provider):
@@ -113,7 +116,7 @@ if __name__ == "__main__":
 
         poses, viz_2d, viz_3d = human_pose_detection_client.Detect(_session_id, _i,  _frame_image)
 
-        Image.open(BytesIO(viz_2d)).save(str(Path("output", _timestamp, f"viz_2d_{_i}.jpg")))
-        Image.open(BytesIO(viz_3d)).save(str(Path("output", _timestamp, f"viz_2d_{_i}.jpg")))
+        Image.open(BytesIO(viz_2d)).save(str(Path(_output_dir, f"viz_2d_{_i}.jpg")))
+        Image.open(BytesIO(viz_3d)).save(str(Path(_output_dir, f"viz_3d_{_i}.jpg")))
 
     human_pose_detection_client.StopSession(_session_id)
