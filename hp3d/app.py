@@ -6,6 +6,7 @@ import datetime
 from pathlib import Path
 from time import timezone
 from PIL import Image
+from typing import List, Dict, Any
 
 import cv2
 import numpy as np
@@ -15,24 +16,7 @@ from .modules.draw import Plotter3d, draw_poses
 from .modules.parse_poses import parse_poses
 from .modules.inference_engine_pytorch import InferenceEnginePyTorch
 
-def get_path_compatible_date_string():
-    return str(datetime.datetime.fromtimestamp(time.time())).replace(":", "_").replace(" ", "_").replace(".", "_")
-
-def rotate_poses(poses_3d, R, t):
-    R_inv = np.linalg.inv(R)
-    for pose_id in range(len(poses_3d)):
-        pose_3d = poses_3d[pose_id].reshape((-1, 4)).transpose()
-        pose_3d[0:3, :] = np.dot(R_inv, pose_3d[0:3, :] - t)
-        poses_3d[pose_id] = pose_3d.transpose().reshape(-1)
-
-    return poses_3d
-
-def get_poses_struct(poses_2d, poses_3d, tracking_ids):
-    num_poses = poses_2d.shape[0]
-    num_keypoints = 18
-    num_unused_keypoints = 1
-
-    keypoint_names_by_id = {
+keypoint_names_by_id = {
         0: "neck",
         1: "nose",
         2: "torso",
@@ -53,6 +37,23 @@ def get_poses_struct(poses_2d, poses_3d, tracking_ids):
         17: "r_ear",
         18: "l_ear"
     }
+
+def get_path_compatible_date_string():
+    return str(datetime.datetime.fromtimestamp(time.time())).replace(":", "_").replace(" ", "_").replace(".", "_")
+
+def rotate_poses(poses_3d, R, t):
+    R_inv = np.linalg.inv(R)
+    for pose_id in range(len(poses_3d)):
+        pose_3d = poses_3d[pose_id].reshape((-1, 4)).transpose()
+        pose_3d[0:3, :] = np.dot(R_inv, pose_3d[0:3, :] - t)
+        poses_3d[pose_id] = pose_3d.transpose().reshape(-1)
+
+    return poses_3d
+
+def get_poses_struct(poses_2d, poses_3d, tracking_ids) -> List[Dict[str, Dict[str, Any]]]:
+    num_poses = poses_2d.shape[0]
+    num_keypoints = 18
+    num_unused_keypoints = 1
 
     poses_list = list()
     
@@ -86,19 +87,23 @@ class Hp3dDetection():
 
     def __init__(self, 
             scaled_input_image: np.ndarray, 
+            poses_struct: list,
             pixel_space_image: np.ndarray,
-            camera_space_image: np.ndarray,
-            poses_struct: str):
+            camera_space_image: np.ndarray):
         
         self.scaled_input_image = scaled_input_image
+        self.poses_struct = poses_struct 
         self.pixel_space_image = pixel_space_image
         self.camera_space_image = camera_space_image
-        self.poses_struct = poses_struct 
+        
 
     def save(self, output_dir: Path, frame_id: int):
         cv2.imwrite(
             os.path.join(output_dir, f"input_{frame_id:04}.jpg"), 
             self.scaled_input_image)
+
+        Path(output_dir, f"poses_{frame_id:04}.json").write_text(
+             json.dumps(self.poses_struct, indent=4))   
 
         cv2.imwrite(
             os.path.join(output_dir, f"pixel_space_{frame_id:04}.jpg"),
@@ -107,9 +112,7 @@ class Hp3dDetection():
         cv2.imwrite(
             os.path.join(output_dir, f"camera_space_{frame_id:04}.jpg"),
             self.camera_space_image)
-
-        Path(output_dir, f"poses_{frame_id:04}.json").write_text(
-             json.dumps(self.poses_struct, indent=4))            
+         
 
 
 class Hp3dSession():
@@ -117,8 +120,8 @@ class Hp3dSession():
 
     def __init__(
             self, 
-            device: str, 
-            path_to_model: str, 
+            device: str = "cuda:0", 
+            path_to_model: str = "human-pose-estimation-3d.pth", 
             base_height: int = 256, 
             path_to_extrinsics = 'hp3d/data/extrinsics.json',
             fx: np.float32 = -1): 
@@ -132,9 +135,9 @@ class Hp3dSession():
         self.fx = fx
 
         self.net = InferenceEnginePyTorch(path_to_model, device)
-        
-        self.canvas_3d = np.zeros((720, 1280, 3), dtype=np.uint8)
-        self.plotter = Plotter3d(self.canvas_3d.shape[:2])
+
+        self.canvas_3d_size = (720, 1280, 3)
+        self.plotter = Plotter3d(self.canvas_3d_size)
         
         extrinsics = json.loads(Path(path_to_extrinsics).read_text())
         self.R = np.array(extrinsics['R'], dtype=np.float32)
@@ -143,10 +146,12 @@ class Hp3dSession():
         self.timestamp = get_path_compatible_date_string()
         self.mean_time = 0
     
-    def detect(self, frame_id: int, frame_np: np.array) -> Hp3dDetection:
+    def detect(
+            self, 
+            frame_id: int, 
+            frame_np: np.array, 
+            request_visualizations: bool = True) -> Hp3dDetection:
         current_time = cv2.getTickCount()
-
-        self.canvas_3d = np.zeros((720, 1280, 3), dtype=np.uint8)
 
         input_scale = self.base_height / frame_np.shape[0]
         scaled_img = cv2.resize(frame_np, dsize=None, fx=input_scale, fy=input_scale)
@@ -159,31 +164,38 @@ class Hp3dSession():
         poses_3d, poses_2d, tracking_ids = parse_poses(inference_result, input_scale, self.stride, fx, is_video=True)
         
         poses_struct = get_poses_struct(poses_2d, poses_3d, tracking_ids)
-        edges = []
-        if len(poses_3d):
-            poses_3d = rotate_poses(poses_3d, self.R, self.t)
-            poses_3d_copy = poses_3d.copy()
-            x = poses_3d_copy[:, 0::4]
-            y = poses_3d_copy[:, 1::4]
-            z = poses_3d_copy[:, 2::4]
-            poses_3d[:, 0::4], poses_3d[:, 1::4], poses_3d[:, 2::4] = -z, x, -y
+        
+        canvas_3d = None
+        viz_2d = None
+        if request_visualizations:
+            canvas_3d = np.zeros(self.canvas_3d_size, dtype=np.uint8)
 
-            poses_3d = poses_3d.reshape(poses_3d.shape[0], 19, -1)[:, :, 0:3]
-            edges = (Plotter3d.SKELETON_EDGES + 19 * np.arange(poses_3d.shape[0]).reshape((-1, 1, 1))).reshape((-1, 2))
-        self.plotter.plot(self.canvas_3d, poses_3d, edges)
+            edges = []
+            if len(poses_3d):
+                poses_3d = rotate_poses(poses_3d, self.R, self.t)
+                poses_3d_copy = poses_3d.copy()
+                x = poses_3d_copy[:, 0::4]
+                y = poses_3d_copy[:, 1::4]
+                z = poses_3d_copy[:, 2::4]
+                poses_3d[:, 0::4], poses_3d[:, 1::4], poses_3d[:, 2::4] = -z, x, -y
 
-        draw_poses(frame_np, poses_2d)
+                poses_3d = poses_3d.reshape(poses_3d.shape[0], 19, -1)[:, :, 0:3]
+                edges = (Plotter3d.SKELETON_EDGES + 19 * np.arange(poses_3d.shape[0]).reshape((-1, 1, 1))).reshape((-1, 2))
+            self.plotter.plot(canvas_3d, poses_3d, edges)
 
-        # Write FPS to image
-        current_time = (cv2.getTickCount() - current_time) / cv2.getTickFrequency()
-        if self.mean_time == 0:
-            self.mean_time = current_time
-        else:
-            self.mean_time = self.mean_time * 0.95 + current_time * 0.05
-        cv2.putText(frame_np, 'FPS: {}'.format(int(1 / self.mean_time * 10) / 10),
-                    (40, 80), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 0, 255))
+            viz_2d = frame_np
+            draw_poses(viz_2d, poses_2d)
 
-        return Hp3dDetection(scaled_img, frame_np, self.canvas_3d, poses_struct)
+            # Write FPS to image
+            current_time = (cv2.getTickCount() - current_time) / cv2.getTickFrequency()
+            if self.mean_time == 0:
+                self.mean_time = current_time
+            else:
+                self.mean_time = self.mean_time * 0.95 + current_time * 0.05
+            cv2.putText(viz_2d, 'FPS: {}'.format(int(1 / self.mean_time * 10) / 10),
+                        (40, 80), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 0, 255))
+
+        return Hp3dDetection(scaled_img, poses_struct, viz_2d, canvas_3d)
 
 
 def run(path_to_video, path_to_output_dir, device):
