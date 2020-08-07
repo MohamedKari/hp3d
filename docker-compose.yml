@@ -10,5 +10,7 @@ services:
     runtime: nvidia
     container_name: hp3d
     shm_size: 2gb
+    ports:
+      - 50053:50053
     volumes:
       - /home/ubuntu/share/hp3d:/app/share

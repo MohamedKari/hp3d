@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package com.porsche.realtery.humanpose; 
+
+service HumanPoseDetection {
+    rpc Ping (Empty) returns (Empty) {}
+    rpc StartSession (Empty) returns (StartSessionResponse) {}
+    rpc Detect (DetectRequest) returns (DetectResponse) {}
+    rpc StopSession (StopSessionRequest) returns (Empty) {}
+}
+
+message StartSessionResponse {
+    int32 session_id = 1;
+}
+
+message DetectRequest {
+    int32 session_id = 1;
+    int32 frame_id = 2;
+
+    // optional
+    float focal_length = 3;
+
+    // jpg
+    bytes frame = 4;
+
+    bool request_visualizations = 5; 
+}
+
+message DetectResponse {
+    int32 session_id = 1;
+    int32 frame_id = 2;
+
+    repeated Pose poses = 3;
+
+    // jpg images, only filled if request_visualization was set to True in the preceding request
+    bytes visualization_2d = 4;
+    bytes visualization_3d = 5;
+}
+
+message Keypoint {
+    string name = 1;
+    bool visible = 2;
+    int32 p_x = 3;
+    int32 p_y = 4;
+    float p_score = 5;
+    int32 c_x = 6;
+    int32 c_y = 7;
+    int32 c_z = 8;
+    float c_score = 9;
+}
+
+message Pose {
+    int32 tracking_id = 1;
+    repeated Keypoint keypoints = 2; // count: 19
+}
+
+message StopSessionRequest {
+    int32 session_id = 1;
+}
+
+message Empty {}
