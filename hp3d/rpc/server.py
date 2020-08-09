@@ -10,6 +10,7 @@ from PIL import Image
 import cv2
 import numpy as np
 
+from .. import log
 from . import human_pose_detection_service_pb2_grpc
 
 from .human_pose_detection_service_pb2 import (
@@ -141,17 +142,20 @@ class Hp3dServicer(human_pose_detection_service_pb2_grpc.HumanPoseDetectionServi
                         tracking_id=pose_dict["tracking_id"],
                         keypoints=proto_keypoints))
             
-            cv2.cvtColor(hp3d_detections.pixel_space_image, cv2.COLOR_BGR2RGB)
-            visualization_2d_image = Image.fromarray(hp3d_detections.pixel_space_image)            
-            visualization_2d_bytesio = BytesIO()
-            visualization_2d_image.save(visualization_2d_bytesio, format="jpeg")
-            visualization_2d_bytes = visualization_2d_bytesio.getvalue()
-            
-            cv2.cvtColor(hp3d_detections.camera_space_image, cv2.COLOR_BGR2RGB)
-            visualization_3d_image = Image.fromarray(hp3d_detections.camera_space_image)
-            visualization_3d_bytesio = BytesIO()
-            visualization_3d_image.save(visualization_3d_bytesio, format="jpeg")
-            visualization_3d_bytes = visualization_3d_bytesio.getvalue()
+            visualization_2d_bytes = None
+            visualization_3d_bytes = None
+            if request_visualizations:
+                cv2.cvtColor(hp3d_detections.pixel_space_image, cv2.COLOR_BGR2RGB)
+                visualization_2d_image = Image.fromarray(hp3d_detections.pixel_space_image)            
+                visualization_2d_bytesio = BytesIO()
+                visualization_2d_image.save(visualization_2d_bytesio, format="jpeg")
+                visualization_2d_bytes = visualization_2d_bytesio.getvalue()
+                
+                cv2.cvtColor(hp3d_detections.camera_space_image, cv2.COLOR_BGR2RGB)
+                visualization_3d_image = Image.fromarray(hp3d_detections.camera_space_image)
+                visualization_3d_bytesio = BytesIO()
+                visualization_3d_image.save(visualization_3d_bytesio, format="jpeg")
+                visualization_3d_bytes = visualization_3d_bytesio.getvalue()
 
             ## Output Response
             detect_response = DetectResponse(
@@ -160,7 +164,9 @@ class Hp3dServicer(human_pose_detection_service_pb2_grpc.HumanPoseDetectionServi
                 poses=proto_poses, 
                 visualization_2d=visualization_2d_bytes,
                 visualization_3d=visualization_3d_bytes)
-
+            
+            logging.getLogger(__name__).debug("Responding with detection result for frame with id %s ", frame_id)
+            
             return detect_response
         except Exception as e:
             raise RpcHandlingException("Detect") from e
