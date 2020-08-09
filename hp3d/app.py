@@ -4,14 +4,12 @@ import os
 import time
 import datetime
 from pathlib import Path
-from time import timezone
-from PIL import Image
 from typing import List, Dict, Any
 
 import cv2
 import numpy as np
 
-from .modules.input_reader import VideoReader, ImageReader
+from .modules.input_reader import VideoReader
 from .modules.draw import Plotter3d, draw_poses
 from .modules.parse_poses import parse_poses
 from .modules.inference_engine_pytorch import InferenceEnginePyTorch
@@ -37,6 +35,7 @@ keypoint_names_by_id = {
         17: "r_ear",
         18: "l_ear"
     }
+
 
 def get_path_compatible_date_string():
     return str(datetime.datetime.fromtimestamp(time.time())).replace(":", "_").replace(" ", "_").replace(".", "_")
