@@ -49,9 +49,10 @@ class Hp3dServicer(human_pose_detection_service_pb2_grpc.HumanPoseDetectionServi
         self.total_session_counter: int = -1
         self.framecounter = -1
 
-    def log_request(self, rpc_name, request, context): # pylint: disable=unused-argument
+    def log_request(self, rpc_name, frame_id, request, context): # pylint: disable=unused-argument
         logging.getLogger(__name__).debug(
-            "Received gRPC request for method %s by peer %s with metadata %s", 
+            "[%s] Received gRPC request for method %s by peer %s with metadata %s", 
+            frame_id,
             rpc_name,
             context.peer(),
             context.invocation_metadata())
@@ -59,7 +60,7 @@ class Hp3dServicer(human_pose_detection_service_pb2_grpc.HumanPoseDetectionServi
     def Ping(self, request: Empty, context) -> Empty:
         try:
             # Input
-            self.log_request("Ping", request, context)
+            self.log_request("Ping", None, request, context)
 
             # Process
 
@@ -73,7 +74,7 @@ class Hp3dServicer(human_pose_detection_service_pb2_grpc.HumanPoseDetectionServi
     def StartSession(self, request: Empty, context) -> StartSessionResponse:
         try:
             # Input
-            self.log_request("StartSession", request, context)
+            self.log_request("StartSession", None, request, context)
             
             # Process
             self.total_session_counter += 1
@@ -95,7 +96,6 @@ class Hp3dServicer(human_pose_detection_service_pb2_grpc.HumanPoseDetectionServi
             # Input
             ## Input Request
             self.framecounter += 1
-            self.log_request("Detect", request, context)
             
             session_id: int = request.session_id
             frame_id: int = request.frame_id
@@ -103,8 +103,9 @@ class Hp3dServicer(human_pose_detection_service_pb2_grpc.HumanPoseDetectionServi
             frame: bytes = request.frame
             request_visualizations: bool = request.request_visualizations
 
+            self.log_request("Detect", frame_id, request, context)
+
             ## Input Deserialization
-            logging.getLogger(__name__).debug("Frame with frame_id %s has length %s", frame_id, len(frame))
             frame_image: Image = Image.open(BytesIO(frame))
             frame_np = np.array(frame_image)
             cv2.cvtColor(frame_np, cv2.COLOR_RGB2BGR) 
@@ -115,7 +116,6 @@ class Hp3dServicer(human_pose_detection_service_pb2_grpc.HumanPoseDetectionServi
 
             # Output
             ## Output Serialization
-            logging.getLogger(__name__).debug("Serializing hp3d_detections.")
             
             proto_poses = []
             for i, pose_dict in enumerate(hp3d_detections.poses_struct):
@@ -165,7 +165,7 @@ class Hp3dServicer(human_pose_detection_service_pb2_grpc.HumanPoseDetectionServi
                 visualization_2d=visualization_2d_bytes,
                 visualization_3d=visualization_3d_bytes)
             
-            logging.getLogger(__name__).debug("Responding with detection result for frame with id %s ", frame_id)
+            logging.getLogger(__name__).debug("[%s] Responding...", frame_id)
             
             return detect_response
         except Exception as e:
@@ -175,7 +175,7 @@ class Hp3dServicer(human_pose_detection_service_pb2_grpc.HumanPoseDetectionServi
     def StopSession(self, request: StopSessionRequest, context) -> Empty:
         try:
             # Input
-            self.log_request("StopSession", request, context)
+            self.log_request("StopSession", None, request, context)
             
             session_id: int = request.session_id
 
