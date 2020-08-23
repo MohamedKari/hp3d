@@ -74,11 +74,7 @@ def get_root_relative_poses(inference_results):
     return poses_3d, np.array(poses_2d), features.shape
 
 
-previous_poses_2d = []
-
-
-def parse_poses(inference_results, input_scale, stride, fx, is_video=False):
-    global previous_poses_2d
+def parse_poses(inference_results, input_scale, stride, fx, previous_poses_2d, is_video=False):
     poses_3d, poses_2d, features_shape = get_root_relative_poses(inference_results)
     poses_2d_scaled = []
     for pose_2d in poses_2d:
@@ -145,4 +141,4 @@ def parse_poses(inference_results, input_scale, stride, fx, is_video=False):
         translated_poses_3d.append(pose_3d.transpose().reshape(-1))
         tracking_ids.append(current_poses_2d[pose_id].id)
 
-    return np.array(translated_poses_3d), np.array(poses_2d_scaled), tracking_ids
+    return np.array(translated_poses_3d), np.array(poses_2d_scaled), tracking_ids, previous_poses_2d

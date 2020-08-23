@@ -5,6 +5,8 @@ import time
 import datetime
 from pathlib import Path
 from typing import List, Dict, Any
+import logging
+from functools import partial
 
 import cv2
 import numpy as np
@@ -63,7 +65,7 @@ def get_poses_struct(poses_2d, poses_3d, tracking_ids) -> List[Dict[str, Dict[st
         keypoints_3d = pose_3d.reshape((-1, 4))
         
         for keypoint_id, (keypoint_2d, keypoint_3d) in enumerate(zip(keypoints_2d, keypoints_3d)):
-            p_x, p_y, p_score = score_2d = keypoint_2d # p = pixel space
+            p_x, p_y, p_score = keypoint_2d # p = pixel space
             c_x, c_y, c_z, c_score = keypoint_3d # c = camera space
             
             current_pose[keypoint_names_by_id[keypoint_id]] = {
@@ -81,6 +83,9 @@ def get_poses_struct(poses_2d, poses_3d, tracking_ids) -> List[Dict[str, Dict[st
     
     return poses_list
 
+
+def keypoint_count_filter(human_detection, keep_greater_than):
+    return sum([human_detection[keypoint_name]["visible"] for keypoint_name in keypoint_names_by_id.values()]) > keep_greater_than
 
 class Hp3dDetection():
 
@@ -132,6 +137,9 @@ class Hp3dSession():
         self.stride = 8
         self.base_height = base_height
         self.fx = fx
+        self.previous_poses_2d = []
+
+        self.tracking_id_state = dict()
 
         self.net = InferenceEnginePyTorch(path_to_model, device)
 
@@ -160,10 +168,33 @@ class Hp3dSession():
             fx = np.float32(0.8 * frame_np.shape[1])
 
         inference_result = self.net.infer(scaled_img)
-        poses_3d, poses_2d, tracking_ids = parse_poses(inference_result, input_scale, self.stride, fx, is_video=True)
+        poses_3d, poses_2d, tracking_ids, self.previous_poses_2d = parse_poses(
+            inference_result, 
+            input_scale, 
+            self.stride, 
+            fx, 
+            self.previous_poses_2d, 
+            is_video=True)
+
+        logging.getLogger(__name__).info("[%s:%s] Tracking ids: %s", self.timestamp, frame_id, tracking_ids)
         
         poses_struct = get_poses_struct(poses_2d, poses_3d, tracking_ids)
+
+        # Remove poses with too few keypoints
+        poses_struct = list(filter(partial(keypoint_count_filter, keep_greater_than=8), poses_struct))
+    
+        # Re-map tracking id so that it only increases by one 
+        # TODO: Check why tracking id is not reset between sessions. Problem is hidden by this re-map but still is latently there.
+        for pose in poses_struct:
+            mapped_tracking_id = self.tracking_id_state.get(pose["tracking_id"])
+
+            if mapped_tracking_id is None:
+                mapped_tracking_id = len(self.tracking_id_state)
+                self.tracking_id_state[pose["tracking_id"]] = mapped_tracking_id
+
+            pose["tracking_id"] = mapped_tracking_id
         
+
         canvas_3d = None
         viz_2d = None
         if request_visualizations:
@@ -198,6 +229,7 @@ class Hp3dSession():
 
     def stop_session(self):
         del self.net
+        self.previous_poses_2d = None
 
 def run(path_to_video, path_to_output_dir, device):
     hp3d_session = Hp3dSession(device, "human-pose-estimation-3d.pth")
